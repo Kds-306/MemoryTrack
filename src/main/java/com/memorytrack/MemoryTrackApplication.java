@@ -12,16 +12,6 @@ public class MemoryTrackApplication {
 
         SpringApplication.run(MemoryTrackApplication.class, args);
 
-        new Thread(() -> {
-            try {
-                Thread.sleep(3000);
-
-                // 🔥 FORCE OPEN BROWSER (Windows)
-                Runtime.getRuntime().exec("cmd /c start http://localhost:8080");
-
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }).start();
+        
     }
 }
