@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Class Loader — MemoryTrack</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Playfair+Display:wght@700;900&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0f0a00;
+  --surface:#1a1200;
+  --card:#1f1800;
+  --border:#3d2e00;
+  --amber:#ffb300;
+  --amber-dim:#ff8f00;
+  --amber-glow:rgba(255,179,0,.12);
+  --amber-pale:rgba(255,179,0,.06);
+  --teal:#00e5ff;
+  --red:#ff5252;
+  --text:#f5e6c0;
+  --muted:#7a6540;
+  --mono:'JetBrains Mono',monospace;
+  --serif:'Playfair Display',serif;
+  --sans:'Source Sans 3',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;overflow-x:hidden;}
+
+/* ── dot-matrix bg ── */
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:radial-gradient(circle,rgba(255,179,0,.08) 1px,transparent 1px);
+  background-size:28px 28px;pointer-events:none;z-index:0;
+}
+body::after{
+  content:'';position:fixed;inset:0;
+  background:radial-gradient(ellipse 80% 60% at 50% 0%, rgba(255,179,0,.06) 0%, transparent 70%);
+  pointer-events:none;z-index:0;
+}
+
+.back-btn{
+  position:fixed;top:24px;left:28px;z-index:100;
+  display:flex;align-items:center;gap:8px;
+  background:var(--card);border:1px solid var(--border);
+  color:var(--amber);font-family:var(--mono);font-size:12px;font-weight:700;
+  padding:8px 16px;border-radius:6px;text-decoration:none;transition:all .2s;letter-spacing:.5px;
+}
+.back-btn:hover{background:var(--amber-glow);border-color:var(--amber);box-shadow:0 0 20px var(--amber-glow);}
+.back-btn::before{content:'←';}
+
+/* ── hero ── */
+.hero{position:relative;z-index:1;text-align:center;padding:80px 20px 50px;}
+.hero-badge{
+  display:inline-block;
+  background:var(--amber-glow);border:1px solid var(--amber);
+  color:var(--amber);font-family:var(--mono);font-size:11px;font-weight:700;
+  padding:5px 16px;border-radius:20px;letter-spacing:2px;text-transform:uppercase;
+  margin-bottom:24px;
+}
+.hero h1{
+  font-family:var(--serif);
+  font-size:clamp(48px,8vw,100px);font-weight:900;
+  color:var(--amber);letter-spacing:-1px;line-height:1;
+  text-shadow:0 0 80px rgba(255,179,0,.2);
+  margin-bottom:8px;
+}
+.hero h1 span{
+  display:block;font-size:.45em;font-weight:700;
+  color:var(--text);letter-spacing:6px;text-transform:uppercase;
+  font-family:var(--mono);margin-bottom:8px;
+}
+.hero p{font-size:17px;color:var(--muted);max-width:600px;margin:16px auto 0;line-height:1.7;}
+
+/* ── layout ── */
+.container{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:0 24px 100px;}
+
+.section-title{
+  font-family:var(--mono);font-size:11px;font-weight:700;
+  color:var(--amber);letter-spacing:3px;text-transform:uppercase;
+  margin-bottom:24px;display:flex;align-items:center;gap:12px;
+}
+.section-title::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* ── loader hierarchy ── */
+.hierarchy{
+  background:var(--card);border:1px solid var(--border);border-radius:20px;
+  padding:36px;margin-bottom:60px;
+}
+.hier-tree{display:flex;flex-direction:column;align-items:center;gap:0;}
+.hier-node{
+  width:100%;max-width:500px;
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:20px 24px;position:relative;
+  transition:border-color .2s,box-shadow .2s;
+}
+.hier-node:hover{border-color:var(--amber);box-shadow:0 0 20px var(--amber-glow);}
+.hier-connector{
+  width:2px;height:28px;background:linear-gradient(to bottom,var(--amber),var(--border));
+  margin:0 auto;
+}
+.hier-node h3{font-family:var(--mono);font-size:14px;font-weight:800;color:var(--amber);margin-bottom:6px;}
+.hier-node p{font-size:13px;color:var(--muted);line-height:1.5;}
+.hier-node .tag{
+  position:absolute;top:20px;right:20px;
+  font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:1px;
+  padding:3px 10px;border-radius:20px;
+}
+.tag-boot{background:rgba(255,179,0,.15);color:var(--amber);border:1px solid var(--amber);}
+.tag-ext {background:rgba(33,150,243,.15);color:#42a5f5;border:1px solid #1565c0;}
+.tag-app {background:rgba(76,175,80,.15);color:#66bb6a;border:1px solid #2e7d32;}
+
+/* ── 3-phase flow ── */
+.phases-flow{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:60px;
+}
+@media(max-width:700px){.phases-flow{grid-template-columns:1fr;}}
+.phase-card{
+  background:var(--card);border:1px solid var(--border);border-radius:16px;
+  padding:28px;position:relative;overflow:hidden;
+  transition:transform .2s,border-color .2s;
+}
+.phase-card:hover{transform:translateY(-4px);border-color:var(--amber);}
+.phase-num{
+  font-family:var(--mono);font-size:48px;font-weight:800;
+  color:rgba(255,179,0,.08);position:absolute;top:16px;right:20px;
+  line-height:1;pointer-events:none;
+}
+.phase-icon{font-size:30px;margin-bottom:14px;}
+.phase-card h3{font-size:18px;font-weight:700;color:var(--text);margin-bottom:10px;}
+.phase-card p{font-size:13px;color:var(--muted);line-height:1.6;}
+.sub-steps{margin-top:14px;display:flex;flex-direction:column;gap:6px;}
+.sub-step{
+  display:flex;align-items:center;gap:10px;
+  font-family:var(--mono);font-size:11px;color:var(--amber);
+  background:var(--amber-pale);border:1px solid var(--border);
+  padding:6px 10px;border-radius:6px;
+}
+.sub-step::before{content:'▸';color:var(--amber);flex-shrink:0;}
+
+/* ── full pipeline ── */
+.pipeline{
+  background:var(--card);border:1px solid var(--border);border-radius:20px;
+  padding:32px;margin-bottom:60px;overflow-x:auto;
+}
+.pipe-steps{
+  display:flex;align-items:center;gap:0;min-width:700px;
+}
+.pipe-step{
+  flex:1;text-align:center;padding:16px 8px;
+  border-right:1px solid var(--border);position:relative;
+}
+.pipe-step:last-child{border-right:none;}
+.pipe-icon{
+  width:44px;height:44px;border-radius:10px;margin:0 auto 10px;
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  background:var(--amber-glow);border:1px solid var(--amber);
+}
+.pipe-step h4{font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;font-family:var(--mono);}
+.pipe-step p{font-size:11px;color:var(--muted);line-height:1.4;}
+.pipe-arrow{
+  flex-shrink:0;padding:0 4px;
+  font-size:18px;color:var(--amber);opacity:.4;
+}
+
+/* ── cards ── */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin-bottom:60px;}
+.card{
+  background:var(--card);border:1px solid var(--border);border-radius:14px;
+  padding:24px;transition:border-color .2s,transform .2s;
+}
+.card:hover{border-color:var(--amber);transform:translateY(-3px);}
+.card h3{font-size:16px;font-weight:700;margin-bottom:8px;color:var(--text);}
+.card p{font-size:13px;color:var(--muted);line-height:1.6;}
+.card-flag{
+  display:inline-block;margin-bottom:12px;
+  font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:2px;
+  color:var(--amber);background:var(--amber-glow);
+  padding:3px 10px;border-radius:4px;text-transform:uppercase;
+}
+
+/* ── code block ── */
+.code-block{
+  background:#080500;border:1px solid var(--border);border-radius:16px;
+  padding:28px;font-family:var(--mono);font-size:13px;margin-bottom:60px;position:relative;
+}
+.code-block::before{
+  content:'Java';position:absolute;top:16px;right:20px;
+  font-size:10px;font-weight:700;color:var(--muted);letter-spacing:2px;
+}
+.cl{display:flex;gap:16px;margin:3px 0;line-height:1.7;}
+.ln{color:#2d2200;min-width:24px;text-align:right;user-select:none;}
+.kw{color:#ff79c6;}.tp{color:#8be9fd;}.fn{color:#50fa7b;}
+.st{color:#f1fa8c;}.cm{color:#4a3a1f;font-style:italic;}.op{color:var(--amber);}
+
+/* ── errors ── */
+.err-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:60px;}
+@media(max-width:700px){.err-grid{grid-template-columns:1fr;}}
+.err-card{
+  background:#150800;border:1px solid #3d1500;border-radius:12px;padding:20px;
+}
+.err-card h4{color:#ff7043;font-family:var(--mono);font-size:13px;font-weight:700;margin-bottom:8px;}
+.err-card p{font-size:12px;color:#7a4030;line-height:1.5;}
+.err-card code{
+  display:block;margin-top:8px;background:#0d0300;padding:8px 12px;
+  border-radius:6px;font-family:var(--mono);font-size:11px;color:#ff8a65;
+}
+
+/* ── visibility rules table ── */
+.vis-table{
+  width:100%;border-collapse:collapse;margin-bottom:60px;
+  background:var(--card);border-radius:16px;overflow:hidden;border:1px solid var(--border);
+}
+.vis-table th{
+  background:#1a0f00;padding:14px 20px;font-family:var(--mono);
+  font-size:11px;font-weight:800;letter-spacing:2px;color:var(--amber);
+  text-transform:uppercase;text-align:left;border-bottom:1px solid var(--border);
+}
+.vis-table td{
+  padding:13px 20px;font-size:13px;color:var(--muted);
+  border-bottom:1px solid var(--border);
+}
+.vis-table tr:last-child td{border-bottom:none;}
+.vis-table td:first-child{color:var(--text);font-weight:600;font-family:var(--mono);font-size:12px;}
+.vis-table tr:hover td{background:var(--amber-pale);}
+.yes{color:#66bb6a;font-family:var(--mono);}.no{color:#ef5350;font-family:var(--mono);}
+</style>
+</head>
+<body>
+
+<a href="/" class="back-btn"> Back to Visualizer</a>
+
+<div class="hero">
+  <div class="hero-badge">⚙️ JVM Subsystem</div>
+  <h1><span>Java</span>Class Loader</h1>
+  <p>The gatekeeper of the JVM — it finds, loads, links, and initializes every class before a single line of your code runs.</p>
+</div>
+
+<div class="container">
+
+  <!-- Loader Hierarchy -->
+  <div class="section-title">Class Loader Hierarchy</div>
+  <div class="hierarchy">
+    <p style="font-size:13px;color:var(--muted);max-width:580px;margin-bottom:28px;">Class loaders follow a strict parent-delegation model. Before loading a class, each loader asks its parent first. Only if the parent can't find it does the child try.</p>
+    <div class="hier-tree">
+      <div class="hier-node">
+        <div class="tag tag-boot">Built into JVM</div>
+        <h3>Bootstrap Class Loader</h3>
+        <p>Loads core Java classes: <code style="color:var(--amber);font-size:11px;">java.lang.*</code>, <code style="color:var(--amber);font-size:11px;">java.util.*</code>, <code style="color:var(--amber);font-size:11px;">java.io.*</code> etc. from <code style="color:var(--amber);font-size:11px;">rt.jar</code>. Written in native C — not a Java class itself.</p>
+      </div>
+      <div class="hier-connector"></div>
+      <div class="hier-node">
+        <div class="tag tag-ext">Extension</div>
+        <h3>Platform Class Loader</h3>
+        <p>Loads Java SE platform APIs and extension libraries from <code style="color:var(--amber);font-size:11px;">$JAVA_HOME/lib/ext</code>. Called "Extension Loader" in Java 8 and below.</p>
+      </div>
+      <div class="hier-connector"></div>
+      <div class="hier-node">
+        <div class="tag tag-app">Application</div>
+        <h3>Application Class Loader</h3>
+        <p>Loads <em>your</em> application classes from the classpath (<code style="color:var(--amber);font-size:11px;">-classpath</code> or <code style="color:var(--amber);font-size:11px;">CLASSPATH</code> env). This is the default loader for user-defined classes.</p>
+      </div>
+      <div class="hier-connector"></div>
+      <div class="hier-node">
+        <div class="tag tag-app">Custom</div>
+        <h3>Custom Class Loader</h3>
+        <p>You can write your own by extending <code style="color:var(--amber);font-size:11px;">ClassLoader</code>. Used by web servers (Tomcat), OSGi, hot-reload frameworks, and bytecode manipulation tools.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3 Phases -->
+  <div class="section-title">The 3 Phases of Class Loading</div>
+  <div class="phases-flow">
+    <div class="phase-card">
+      <div class="phase-num">1</div>
+      <div class="phase-icon">🔍</div>
+      <h3>Loading</h3>
+      <p>Finds the <code style="color:var(--amber);font-size:11px;">.class</code> file (from disk, JAR, network, or generated) and reads its binary data into memory as a <code style="color:var(--amber);font-size:11px;">byte[]</code>.</p>
+      <div class="sub-steps">
+        <div class="sub-step">Find .class binary</div>
+        <div class="sub-step">Read into byte array</div>
+        <div class="sub-step">Create Class object</div>
+      </div>
+    </div>
+    <div class="phase-card">
+      <div class="phase-num">2</div>
+      <div class="phase-icon">🔗</div>
+      <h3>Linking</h3>
+      <p>Three sub-steps that prepare the class for use: verify bytecode is valid, prepare static fields, and resolve symbolic references.</p>
+      <div class="sub-steps">
+        <div class="sub-step">Verify bytecode</div>
+        <div class="sub-step">Prepare static fields (set to defaults)</div>
+        <div class="sub-step">Resolve symbolic refs</div>
+      </div>
+    </div>
+    <div class="phase-card">
+      <div class="phase-num">3</div>
+      <div class="phase-icon">⚡</div>
+      <h3>Initialization</h3>
+      <p>Static variables are assigned their declared values and static initializer blocks <code style="color:var(--amber);font-size:11px;">static { }</code> are executed — in source order.</p>
+      <div class="sub-steps">
+        <div class="sub-step">Run static blocks</div>
+        <div class="sub-step">Assign static values</div>
+        <div class="sub-step">Class is ready to use</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full Pipeline -->
+  <div class="section-title">Full Journey: .java → Running Code</div>
+  <div class="pipeline">
+    <div class="pipe-steps">
+      <div class="pipe-step">
+        <div class="pipe-icon">📝</div>
+        <h4>Source Code</h4>
+        <p>You write Test.java</p>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step">
+        <div class="pipe-icon">⚙️</div>
+        <h4>javac</h4>
+        <p>Compiler produces Test.class (bytecode)</p>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step">
+        <div class="pipe-icon">🔍</div>
+        <h4>Load</h4>
+        <p>ClassLoader finds & reads Test.class</p>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step">
+        <div class="pipe-icon">✅</div>
+        <h4>Verify</h4>
+        <p>Bytecode verifier checks safety rules</p>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step">
+        <div class="pipe-icon">🧠</div>
+        <h4>JIT / Interpret</h4>
+        <p>JVM executes or compiles to native</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Key features -->
+  <div class="section-title">Key Properties</div>
+  <div class="cards">
+    <div class="card">
+      <div class="card-flag">Delegation</div>
+      <h3>Parent-First Delegation</h3>
+      <p>Every class loader delegates to its parent before trying itself. This prevents malicious code from replacing core classes like <code style="color:var(--amber);font-size:11px;">java.lang.String</code>.</p>
+    </div>
+    <div class="card">
+      <div class="card-flag">Uniqueness</div>
+      <h3>Class Identity = Loader + Name</h3>
+      <p>Two classes with the same name loaded by different loaders are <em>different classes</em> to the JVM. This enables web server isolation per webapp.</p>
+    </div>
+    <div class="card">
+      <div class="card-flag">Lazy</div>
+      <h3>Lazy Loading</h3>
+      <p>Classes are loaded on demand — only when first referenced. Your entire classpath is NOT loaded at startup, keeping startup times fast.</p>
+    </div>
+    <div class="card">
+      <div class="card-flag">Visibility</div>
+      <h3>Visibility Rules</h3>
+      <p>A class loaded by a child loader can see classes loaded by its parent. But a parent loader <em>cannot</em> see classes loaded by its children.</p>
+    </div>
+    <div class="card">
+      <div class="card-flag">Hot reload</div>
+      <h3>Dynamic Class Loading</h3>
+      <p>Frameworks like Spring Boot DevTools and JRebel use custom class loaders to reload changed classes without restarting the JVM.</p>
+    </div>
+    <div class="card">
+      <div class="card-flag">Security</div>
+      <h3>Bytecode Verification</h3>
+      <p>Before a class runs, the JVM verifier checks: valid instruction opcodes, consistent stack depths, type safety, no illegal access — all without running the code.</p>
+    </div>
+  </div>
+
+  <!-- Visibility table -->
+  <div class="section-title">Loader Visibility Matrix</div>
+  <table class="vis-table">
+    <tr><th>Who is loading</th><th>Can see Bootstrap</th><th>Can see Platform</th><th>Can see Application</th><th>Can see Custom</th></tr>
+    <tr><td>Bootstrap</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td></tr>
+    <tr><td>Platform</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td></tr>
+    <tr><td>Application</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td></tr>
+    <tr><td>Custom (child)</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓ (own)</td></tr>
+  </table>
+
+  <!-- Code example -->
+  <div class="section-title">Class Loading in Code</div>
+  <div class="code-block">
+    <div class="cl"><span class="ln">1</span><span><span class="kw">public class</span> <span class="tp">LoaderDemo</span> {</span></div>
+    <div class="cl"><span class="ln">2</span><span>  <span class="kw">static</span> {</span></div>
+    <div class="cl"><span class="ln">3</span><span>    <span class="cm">// runs ONCE when class is first loaded (phase 3: init)</span></span></div>
+    <div class="cl"><span class="ln">4</span><span>    <span class="tp">System</span>.out.<span class="fn">println</span>(<span class="st">"LoaderDemo initialized!"</span>);</span></div>
+    <div class="cl"><span class="ln">5</span><span>  }</span></div>
+    <div class="cl"><span class="ln">6</span><span></span></div>
+    <div class="cl"><span class="ln">7</span><span>  <span class="kw">public static void</span> <span class="fn">main</span>(<span class="tp">String</span>[] args) <span class="kw">throws</span> <span class="tp">Exception</span> {</span></div>
+    <div class="cl"><span class="ln">8</span><span>    <span class="cm">// Which loader loaded this class?</span></span></div>
+    <div class="cl"><span class="ln">9</span><span>    <span class="tp">ClassLoader</span> cl = <span class="tp">LoaderDemo</span>.class.<span class="fn">getClassLoader</span>();</span></div>
+    <div class="cl"><span class="ln">10</span><span>    <span class="tp">System</span>.out.<span class="fn">println</span>(cl);  <span class="cm">// sun.misc.Launcher$AppClassLoader</span></span></div>
+    <div class="cl"><span class="ln">11</span><span></span></div>
+    <div class="cl"><span class="ln">12</span><span>    <span class="cm">// String was loaded by Bootstrap (returns null)</span></span></div>
+    <div class="cl"><span class="ln">13</span><span>    <span class="tp">System</span>.out.<span class="fn">println</span>(<span class="tp">String</span>.class.<span class="fn">getClassLoader</span>()); <span class="cm">// null</span></span></div>
+    <div class="cl"><span class="ln">14</span><span></span></div>
+    <div class="cl"><span class="ln">15</span><span>    <span class="cm">// Load class dynamically at runtime</span></span></div>
+    <div class="cl"><span class="ln">16</span><span>    <span class="tp">Class</span>&lt;?&gt; c = <span class="tp">Class</span>.<span class="fn">forName</span>(<span class="st">"com.example.MyPlugin"</span>);</span></div>
+    <div class="cl"><span class="ln">17</span><span>  }</span></div>
+    <div class="cl"><span class="ln">18</span><span>}</span></div>
+  </div>
+
+  <!-- Errors -->
+  <div class="section-title">Common Class Loading Errors</div>
+  <div class="err-grid">
+    <div class="err-card">
+      <h4>ClassNotFoundException</h4>
+      <p>Class not found anywhere on the classpath. Usually a missing JAR, wrong package name, or typo in <code style="color:#ff8a65;">Class.forName()</code>.</p>
+      <code>Class.forName("com.missing.Foo") // thrown</code>
+    </div>
+    <div class="err-card">
+      <h4>NoClassDefFoundError</h4>
+      <p>Class was present at compile time but missing at runtime. More severe — it's an Error not an Exception. Often a classpath config issue in deployment.</p>
+      <code>// Compiled fine, JAR missing at runtime</code>
+    </div>
+    <div class="err-card">
+      <h4>ClassCastException</h4>
+      <p>Two loaders loaded the "same" class — they are distinct types to the JVM. Casting between them fails even if the bytecode is identical.</p>
+      <code>// Foo from loader A ≠ Foo from loader B</code>
+    </div>
+    <div class="err-card">
+      <h4>ExceptionInInitializerError</h4>
+      <p>An exception was thrown inside a <code style="color:#ff8a65;">static { }</code> block during class initialization. The class can never be used — subsequent access throws <code style="color:#ff8a65;">NoClassDefFoundError</code>.</p>
+      <code>static { throw new RuntimeException(); }</code>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

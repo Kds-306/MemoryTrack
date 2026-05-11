@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Heap Memory — MemoryTrack</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=DM+Serif+Display&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#030d1a;
+  --surface:#071428;
+  --card:#0a1f38;
+  --border:#0e3060;
+  --blue:#4fc3f7;
+  --blue-dim:#0288d1;
+  --blue-glow:rgba(79,195,247,.12);
+  --teal:#00e5ff;
+  --warn:#ffab40;
+  --red:#ff5252;
+  --text:#dde8f5;
+  --muted:#5c7a99;
+  --mono:'JetBrains Mono',monospace;
+  --serif:'DM Serif Display',serif;
+  --sans:'DM Sans',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;overflow-x:hidden;}
+
+/* ── animated wave bg ── */
+body::before{
+  content:'';position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 80% 40% at 20% 80%, rgba(2,136,209,.08) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 20%, rgba(0,229,255,.05) 0%, transparent 60%);
+  pointer-events:none;z-index:0;
+}
+
+.back-btn{
+  position:fixed;top:24px;left:28px;z-index:100;
+  display:flex;align-items:center;gap:8px;
+  background:var(--card);border:1px solid var(--border);
+  color:var(--blue);font-family:var(--mono);font-size:12px;font-weight:700;
+  padding:8px 16px;border-radius:6px;text-decoration:none;transition:all .2s;letter-spacing:.5px;
+}
+.back-btn:hover{background:var(--blue-glow);border-color:var(--blue);box-shadow:0 0 20px var(--blue-glow);}
+.back-btn::before{content:'←';}
+
+/* ── hero ── */
+.hero{
+  position:relative;z-index:1;text-align:center;padding:80px 20px 50px;
+}
+.hero-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--blue-glow);border:1px solid var(--blue);
+  color:var(--blue);font-family:var(--mono);font-size:11px;font-weight:700;
+  padding:5px 16px;border-radius:20px;letter-spacing:2px;text-transform:uppercase;
+  margin-bottom:24px;
+}
+.hero h1{
+  font-family:var(--serif);
+  font-size:clamp(52px,9vw,110px);font-weight:400;letter-spacing:-1px;line-height:1;
+  background:linear-gradient(160deg,#e0f7fa 0%,var(--blue) 40%,var(--teal) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  margin-bottom:20px;
+}
+.hero-sub{
+  font-size:17px;color:var(--muted);max-width:600px;margin:0 auto;line-height:1.7;
+}
+
+/* ── layout ── */
+.container{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:0 24px 100px;}
+
+.section-title{
+  font-family:var(--mono);font-size:11px;font-weight:700;
+  color:var(--blue);letter-spacing:3px;text-transform:uppercase;
+  margin-bottom:24px;display:flex;align-items:center;gap:12px;
+}
+.section-title::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* ── heap object animation ── */
+.heap-visual{
+  background:var(--card);border:1px solid var(--border);border-radius:20px;
+  padding:36px;margin-bottom:60px;position:relative;overflow:hidden;
+  display:flex;gap:24px;align-items:center;flex-wrap:wrap;
+  justify-content:center;min-height:200px;
+}
+.heap-visual::before{
+  content:'HEAP';position:absolute;right:24px;top:24px;
+  font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:4px;
+  color:var(--muted);opacity:.2;
+}
+.heap-obj{
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+}
+.obj-circle{
+  width:80px;height:80px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:12px;font-weight:800;
+  border:2px solid transparent;animation:float 3s ease-in-out infinite;
+  position:relative;
+}
+.obj-circle.c1{background:linear-gradient(135deg,#0a2a4a,#0d3b6e);border-color:#4fc3f7;color:#4fc3f7;animation-delay:0s;}
+.obj-circle.c2{background:linear-gradient(135deg,#1a1a4a,#2a2a7e);border-color:#9c27b0;color:#ce93d8;animation-delay:.5s;}
+.obj-circle.c3{background:linear-gradient(135deg,#0a3a1a,#0d5e2a);border-color:#00e676;color:#00e676;animation-delay:1s;}
+.obj-circle.c4{background:linear-gradient(135deg,#3a1a0a,#6e2a0d);border-color:#ffab40;color:#ffab40;animation-delay:1.5s;}
+.obj-circle.gc{background:linear-gradient(135deg,#2a0a0a,#500d0d);border-color:#ff5252;color:#ff5252;animation-delay:2s;opacity:.5;}
+@keyframes float{
+  0%,100%{transform:translateY(0);}
+  50%{transform:translateY(-8px);}
+}
+.obj-addr{
+  font-family:var(--mono);font-size:10px;color:var(--muted);
+  background:var(--surface);padding:3px 8px;border-radius:4px;
+}
+.obj-arrow{
+  font-family:var(--mono);font-size:11px;color:var(--blue);
+  writing-mode:vertical-rl;
+}
+.ref-line{
+  width:2px;height:40px;background:linear-gradient(to bottom,var(--blue),transparent);
+  margin:0 auto;
+}
+
+/* ── cards ── */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;margin-bottom:60px;}
+.card{
+  background:var(--card);border:1px solid var(--border);border-radius:16px;
+  padding:26px;position:relative;overflow:hidden;
+  transition:transform .25s,border-color .25s,box-shadow .25s;
+}
+.card:hover{transform:translateY(-5px);border-color:var(--blue);box-shadow:0 8px 40px var(--blue-glow);}
+.card-icon{font-size:28px;margin-bottom:14px;}
+.card h3{font-size:17px;font-weight:700;margin-bottom:8px;}
+.card p{font-size:13px;color:var(--muted);line-height:1.6;}
+.card-shine{
+  position:absolute;top:-60px;right:-60px;width:150px;height:150px;border-radius:50%;
+  background:var(--blue-glow);filter:blur(40px);pointer-events:none;
+}
+
+/* ── generations diagram ── */
+.gen-diagram{
+  background:var(--card);border:1px solid var(--border);border-radius:20px;
+  padding:32px;margin-bottom:60px;
+}
+.gen-bars{display:flex;gap:12px;margin-top:24px;flex-wrap:wrap;}
+.gen-bar{flex:1;min-width:160px;border-radius:12px;padding:20px;text-align:center;border:1px solid transparent;}
+.gen-bar.young{background:linear-gradient(180deg,#071428,#0a2040);border-color:#0288d1;}
+.gen-bar.old  {background:linear-gradient(180deg,#071428,#1a1a30);border-color:#7e57c2;}
+.gen-bar.meta {background:linear-gradient(180deg,#071428,#1a2010);border-color:#388e3c;}
+.gen-bar h3{font-family:var(--mono);font-size:13px;font-weight:800;margin-bottom:8px;letter-spacing:1px;}
+.gen-bar.young h3{color:#4fc3f7;}
+.gen-bar.old   h3{color:#9575cd;}
+.gen-bar.meta  h3{color:#66bb6a;}
+.gen-bar p{font-size:12px;color:var(--muted);line-height:1.5;}
+.gen-bar .gen-size{
+  margin-top:12px;font-family:var(--mono);font-size:11px;
+  padding:4px 10px;border-radius:6px;display:inline-block;
+}
+.gen-bar.young .gen-size{background:rgba(2,136,209,.15);color:#4fc3f7;}
+.gen-bar.old   .gen-size{background:rgba(126,87,194,.15);color:#9575cd;}
+.gen-bar.meta  .gen-size{background:rgba(56,142,60,.15);color:#66bb6a;}
+
+.gc-arrow{
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:20px;color:var(--muted);padding:0 4px;
+}
+
+/* ── GC phases ── */
+.gc-phases{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:60px;}
+.phase{
+  background:var(--card);border:1px solid var(--border);border-radius:14px;
+  padding:22px;text-align:center;position:relative;
+  transition:border-color .2s;
+}
+.phase:hover{border-color:var(--blue);}
+.phase-num{
+  width:40px;height:40px;border-radius:50%;margin:0 auto 14px;
+  background:var(--blue-glow);border:2px solid var(--blue);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:14px;font-weight:800;color:var(--blue);
+}
+.phase h4{font-size:14px;font-weight:700;margin-bottom:8px;}
+.phase p{font-size:12px;color:var(--muted);line-height:1.5;}
+
+/* ── memory flags table ── */
+.flags-table{
+  width:100%;border-collapse:collapse;margin-bottom:60px;
+  background:var(--card);border-radius:16px;overflow:hidden;border:1px solid var(--border);
+}
+.flags-table th{
+  background:#071828;padding:14px 20px;font-family:var(--mono);
+  font-size:11px;font-weight:800;letter-spacing:2px;color:var(--blue);
+  text-transform:uppercase;text-align:left;border-bottom:1px solid var(--border);
+}
+.flags-table td{
+  padding:13px 20px;font-size:12px;color:var(--muted);
+  border-bottom:1px solid var(--border);font-family:var(--mono);
+}
+.flags-table tr:last-child td{border-bottom:none;}
+.flags-table td:first-child{color:var(--blue);font-weight:700;}
+.flags-table tr:hover td{background:var(--blue-glow);}
+
+/* ── code block ── */
+.code-block{
+  background:#020810;border:1px solid var(--border);border-radius:16px;
+  padding:28px;font-family:var(--mono);font-size:13px;margin-bottom:60px;position:relative;
+}
+.code-block::before{
+  content:'Java';position:absolute;top:16px;right:20px;
+  font-size:10px;font-weight:700;color:var(--muted);letter-spacing:2px;
+}
+.cl{display:flex;gap:16px;margin:3px 0;line-height:1.7;}
+.ln{color:#1e3a5f;min-width:24px;text-align:right;user-select:none;}
+.kw{color:#ff79c6;}.tp{color:#8be9fd;}.fn{color:#50fa7b;}
+.st{color:#f1fa8c;}.cm{color:#4a6fa5;font-style:italic;}.op{color:#bd93f9;}
+</style>
+</head>
+<body>
+
+<a href="/" class="back-btn"> Back to Visualizer</a>
+
+<div class="hero">
+  <div class="hero-badge">☁️ JVM Memory Area</div>
+  <h1>Heap Memory</h1>
+  <p class="hero-sub">The JVM's shared ocean of objects — where all instances live, breathe, and eventually get collected.</p>
+</div>
+
+<div class="container">
+
+  <!-- Live heap visualization -->
+  <div class="section-title">Objects on the Heap</div>
+  <div class="heap-visual">
+    <div class="heap-obj">
+      <div class="obj-circle c1">Student</div>
+      <div class="ref-line"></div>
+      <div class="obj-addr">0x4a2f</div>
+    </div>
+    <div class="heap-obj">
+      <div class="obj-circle c2">ArrayList</div>
+      <div class="ref-line"></div>
+      <div class="obj-addr">0x7c91</div>
+    </div>
+    <div class="heap-obj">
+      <div class="obj-circle c3">String</div>
+      <div class="ref-line"></div>
+      <div class="obj-addr">0x3b10</div>
+    </div>
+    <div class="heap-obj">
+      <div class="obj-circle c4">int[]</div>
+      <div class="ref-line"></div>
+      <div class="obj-addr">0x9d44</div>
+    </div>
+    <div class="heap-obj">
+      <div class="obj-circle gc">orphan</div>
+      <div class="ref-line"></div>
+      <div class="obj-addr" style="color:#ff5252;">GC target</div>
+    </div>
+  </div>
+
+  <!-- Key concepts -->
+  <div class="section-title">Key Concepts</div>
+  <div class="cards">
+    <div class="card">
+      <div class="card-shine"></div>
+      <div class="card-icon">🔗</div>
+      <h3>Reference-Based Access</h3>
+      <p>You never touch heap objects directly. Stack variables hold a <em>reference</em> (memory address). The JVM dereferences it to reach the actual object on the heap.</p>
+    </div>
+    <div class="card">
+      <div class="card-shine"></div>
+      <div class="card-icon">🤝</div>
+      <h3>Shared Across Threads</h3>
+      <p>All threads share the heap. This enables objects to be passed between threads — but also requires synchronization (<code style="color:#4fc3f7;font-size:11px;">synchronized</code>, <code style="color:#4fc3f7;font-size:11px;">volatile</code>) to be safe.</p>
+    </div>
+    <div class="card">
+      <div class="card-shine"></div>
+      <div class="card-icon">🆕</div>
+      <h3>Created with <code style="font-size:14px;">new</code></h3>
+      <p>Every <code style="color:#4fc3f7;font-size:11px;">new</code> keyword allocates space on the heap. This includes arrays, class instances, strings created via new, and anonymous classes.</p>
+    </div>
+    <div class="card">
+      <div class="card-shine"></div>
+      <div class="card-icon">♻️</div>
+      <h3>Garbage Collected</h3>
+      <p>Objects with no live references become eligible for GC. The JVM's GC thread reclaims their space. You can hint with <code style="color:#4fc3f7;font-size:11px;">System.gc()</code> but can't force it.</p>
+    </div>
+    <div class="card">
+      <div class="card-shine"></div>
+      <div class="card-icon">🏊</div>
+      <h3>String Pool</h3>
+      <p>String literals live in a special pool inside the heap. <code style="color:#4fc3f7;font-size:11px;">"hello" == "hello"</code> is true because both point to the same pooled object.</p>
+    </div>
+    <div class="card">
+      <div class="card-shine"></div>
+      <div class="card-icon">📏</div>
+      <h3>Configurable Size</h3>
+      <p>Use <code style="color:#4fc3f7;font-size:11px;">-Xms</code> (initial) and <code style="color:#4fc3f7;font-size:11px;">-Xmx</code> (max) JVM flags to tune heap size for your application's needs.</p>
+    </div>
+  </div>
+
+  <!-- Heap Generations -->
+  <div class="section-title">Heap Generations (Generational GC)</div>
+  <div class="gen-diagram">
+    <p style="font-size:13px;color:var(--muted);max-width:640px;">The heap is split into generations. Most objects die young — the generational hypothesis — so the JVM optimizes GC by collecting the Young Generation frequently and Old Generation rarely.</p>
+    <div class="gen-bars">
+      <div class="gen-bar young">
+        <h3>Young Generation</h3>
+        <p>New objects are born here. Divided into <strong style="color:#4fc3f7;">Eden</strong> + two <strong style="color:#4fc3f7;">Survivor spaces</strong>. Minor GC runs frequently and is very fast.</p>
+        <div class="gen-size">~1/3 of heap</div>
+      </div>
+      <div class="gc-arrow">→</div>
+      <div class="gen-bar old">
+        <h3>Old Generation</h3>
+        <p>Objects that survive multiple Minor GCs get promoted here. Major GC (Full GC) runs here — slower, causes longer pauses.</p>
+        <div class="gen-size">~2/3 of heap</div>
+      </div>
+      <div class="gc-arrow">+</div>
+      <div class="gen-bar meta">
+        <h3>Metaspace</h3>
+        <p>Class metadata, method bytecode, static variables (Java 8+). Replaced PermGen. Uses native memory — not heap.</p>
+        <div class="gen-size">native memory</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GC phases -->
+  <div class="section-title">How Garbage Collection Works</div>
+  <div class="gc-phases">
+    <div class="phase">
+      <div class="phase-num">1</div>
+      <h4>Mark</h4>
+      <p>GC starts from GC Roots (stack refs, static fields) and marks all reachable objects.</p>
+    </div>
+    <div class="phase">
+      <div class="phase-num">2</div>
+      <h4>Sweep</h4>
+      <p>Unreachable (unmarked) objects are identified. Their memory is noted as free.</p>
+    </div>
+    <div class="phase">
+      <div class="phase-num">3</div>
+      <h4>Compact</h4>
+      <p>Live objects are moved together to eliminate fragmentation. Pointers updated.</p>
+    </div>
+    <div class="phase">
+      <div class="phase-num">4</div>
+      <h4>Promote</h4>
+      <p>Survivors of enough Minor GCs get promoted to Old Generation.</p>
+    </div>
+  </div>
+
+  <!-- JVM flags -->
+  <div class="section-title">Important JVM Heap Flags</div>
+  <table class="flags-table">
+    <tr><th>Flag</th><th>Meaning</th><th>Example</th></tr>
+    <tr><td>-Xms</td><td>Initial heap size at JVM start</td><td>-Xms256m</td></tr>
+    <tr><td>-Xmx</td><td>Maximum heap size allowed</td><td>-Xmx2g</td></tr>
+    <tr><td>-Xmn</td><td>Size of Young Generation</td><td>-Xmn512m</td></tr>
+    <tr><td>-XX:+UseG1GC</td><td>Use G1 Garbage Collector (default Java 9+)</td><td>-XX:+UseG1GC</td></tr>
+    <tr><td>-verbose:gc</td><td>Print GC events to console</td><td>-verbose:gc</td></tr>
+    <tr><td>-XX:+HeapDumpOnOutOfMemoryError</td><td>Dump heap when OOM occurs</td><td></td></tr>
+  </table>
+
+  <!-- Code example -->
+  <div class="section-title">Heap in Code</div>
+  <div class="code-block">
+    <div class="cl"><span class="ln">1</span><span><span class="kw">public class</span> <span class="tp">HeapDemo</span> {</span></div>
+    <div class="cl"><span class="ln">2</span><span>  <span class="kw">public static void</span> <span class="fn">main</span>(<span class="tp">String</span>[] args) {</span></div>
+    <div class="cl"><span class="ln">3</span><span>    <span class="cm">// object allocated on HEAP — reference on stack</span></span></div>
+    <div class="cl"><span class="ln">4</span><span>    <span class="tp">Student</span> s = <span class="kw">new</span> <span class="fn">Student</span>(<span class="st">"Alice"</span>);  <span class="cm">// 0x4a2f</span></span></div>
+    <div class="cl"><span class="ln">5</span><span>    <span class="tp">Student</span> t = s;                   <span class="cm">// t also points to 0x4a2f</span></span></div>
+    <div class="cl"><span class="ln">6</span><span></span></div>
+    <div class="cl"><span class="ln">7</span><span>    s = <span class="kw">null</span>;   <span class="cm">// s no longer references 0x4a2f</span></span></div>
+    <div class="cl"><span class="ln">8</span><span>    <span class="cm">// object still alive — t still holds 0x4a2f</span></span></div>
+    <div class="cl"><span class="ln">9</span><span></span></div>
+    <div class="cl"><span class="ln">10</span><span>    t = <span class="kw">null</span>;   <span class="cm">// now 0x4a2f has ZERO references → GC eligible</span></span></div>
+    <div class="cl"><span class="ln">11</span><span>    <span class="cm">// GC may reclaim 0x4a2f at any time from here</span></span></div>
+    <div class="cl"><span class="ln">12</span><span>  }</span></div>
+    <div class="cl"><span class="ln">13</span><span>}</span></div>
+  </div>
+
+</div>
+</body>
+</html>

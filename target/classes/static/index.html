@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MemoryTrack — JVM Visualizer</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+/* ── Reset & Variables ─────────────────────────────────── */
+*{ box-sizing:border-box; margin:0; padding:0; }
+:root{
+  --bg:       #eef1f5;   /* soft grey background */
+  --surface:  #f6f7fb;
+  --card:     #ffffff;
+  --card2:    #e9edf3;
+
+  --border:   #d6dbe3;
+  --border2:  #c7ced9;
+
+  --violet:   #6d6df0;
+  --violet-b: #5b5be6;
+  --violet-d: #4c4cd9;
+
+  --violet-g: rgba(109,109,240,.08);
+  --violet-p: rgba(109,109,240,.05);
+
+  --indigo:   #7c83fd;
+  --indigo-g: rgba(124,131,253,.08);
+
+  --pink:     #f472b6;
+  --pink-g:   rgba(244,114,182,.08);
+
+  --cyan:     #22d3ee;
+  --cyan-g:   rgba(34,211,238,.08);
+
+  /* panel colors */
+  --col-stack:  #22c55e;
+  --col-heap:   #3b82f6;
+  --col-static: #f59e0b;
+  --col-pop:    #ef4444;
+
+  --text:     #1f2937;
+  --muted:    #6b7280;
+  --muted2:   #94a3b8;
+
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Syne', sans-serif;
+}
+
+html{ scroll-behavior:smooth; }
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--mono);
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* ── Geometric background ──────────────────────────────── */
+body::before{
+  content:'';
+  position:fixed; inset:0;
+  background-image:
+    linear-gradient(rgba(167,139,250,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(167,139,250,.04) 1px, transparent 1px);
+  background-size:40px 40px;
+  pointer-events:none; z-index:0;
+}
+body::after{
+  content:'';
+  position:fixed; inset:0;
+  background:
+    radial-gradient(ellipse 70% 50% at 50% -10%, rgba(124,58,237,.18) 0%, transparent 65%),
+    radial-gradient(ellipse 40% 30% at 90% 90%,  rgba(244,114,182,.06) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 30% at 10% 80%,  rgba(103,232,249,.05) 0%, transparent 60%);
+  pointer-events:none; z-index:0;
+}
+
+/* ── Header ────────────────────────────────────────────── */
+.header{
+  position:relative; z-index:10;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:16px 32px;
+  border-bottom:1px solid var(--border);
+  background:rgba(8,5,15,.88);
+  backdrop-filter:blur(14px);
+}
+
+.logo{ display:flex; align-items:center; gap:14px; }
+.logo-icon{
+  width:34px; height:34px; border-radius:9px;
+  background:linear-gradient(135deg, var(--violet-b), var(--indigo));
+  display:flex; align-items:center; justify-content:center;
+  font-size:16px; box-shadow:0 0 20px rgba(124,58,237,.4);
+  animation:iconPulse 3s ease-in-out infinite;
+}
+@keyframes iconPulse{
+  0%,100%{ box-shadow:0 0 16px rgba(124,58,237,.3); }
+  50%    { box-shadow:0 0 28px rgba(124,58,237,.6), 0 0 48px rgba(124,58,237,.2); }
+}
+.logo-text{
+  font-family:var(--sans); font-size:19px; font-weight:800;
+  letter-spacing:-0.5px;
+  background:linear-gradient(135deg, var(--violet) 0%, var(--indigo) 60%, var(--cyan) 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+}
+.logo-version{
+  font-size:9px; font-weight:800; letter-spacing:2px; color:var(--muted2);
+  background:var(--violet-p); border:1px solid var(--border);
+  padding:2px 8px; border-radius:4px; text-transform:uppercase;
+  margin-left:4px;
+}
+
+.nav-links{ display:flex; gap:8px; align-items:center; }
+.nav-btn{
+  background:transparent; border:1px solid var(--border2);
+  color:var(--muted2); font-family:var(--mono); font-size:11px; font-weight:700;
+  padding:7px 16px; border-radius:7px; cursor:pointer; text-decoration:none;
+  transition:all .2s; letter-spacing:.5px;
+  display:flex; align-items:center; gap:7px;
+}
+.nav-btn:hover{
+  color:var(--violet); border-color:var(--violet);
+  background:var(--violet-p);
+  box-shadow:0 0 16px var(--violet-g);
+}
+.nav-indicator{
+  width:5px; height:5px; border-radius:50%; flex-shrink:0;
+}
+.nav-btn.stack-btn .nav-indicator{ background:var(--col-stack); }
+.nav-btn.heap-btn  .nav-indicator{ background:var(--col-heap);  }
+.nav-btn.cl-btn    .nav-indicator{ background:var(--col-static);}
+
+/* ── Hero ──────────────────────────────────────────────── */
+.hero{
+  position:relative; z-index:1;
+  text-align:center; padding:32px 20px 20px;
+}
+.hero-badge{
+  display:inline-flex; align-items:center; gap:8px;
+  background:var(--violet-g); border:1px solid rgba(167,139,250,.3);
+  color:var(--violet); font-size:10px; font-weight:800;
+  padding:4px 16px; border-radius:20px;
+  letter-spacing:3px; text-transform:uppercase; margin-bottom:12px;
+}
+.hero-badge::before{
+  content:''; width:5px; height:5px; border-radius:50%;
+  background:var(--violet); box-shadow:0 0 6px var(--violet);
+}
+.hero h1{
+  font-family:var(--sans); font-size:clamp(28px,4vw,48px);
+  font-weight:800; letter-spacing:-1px; line-height:1.05;
+  background:linear-gradient(135deg,#ede9fe 0%,var(--violet) 45%,var(--indigo) 75%,var(--cyan) 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  margin-bottom:8px;
+}
+.hero p{
+  font-size:12px; color:var(--muted2);
+  letter-spacing:.3px; line-height:1.7;
+}
+
+/* ── Workspace grid ────────────────────────────────────── */
+.workspace{
+  position:relative; z-index:1;
+  display:grid;
+  grid-template-columns: 340px 1fr;
+  gap:0;
+  max-width:1380px; margin:0 auto;
+  padding:0 20px 24px;
+}
+
+/* ── LEFT PANEL ─────────────────────────────────────────── */
+.left-panel{
+  grid-row:1;
+  display:flex; flex-direction:column; gap:0;
+  border-right:1px solid var(--border);
+  padding-right:18px;
+}
+
+.panel-block{
+  border-bottom:1px solid var(--border2);
+  padding:16px 0;
+}
+.panel-block:last-child{ border-bottom:none; }
+
+.panel-label{
+  font-size:9px; font-weight:800; letter-spacing:3px;
+  text-transform:uppercase; margin-bottom:10px;
+  color:var(--muted2);
+  display:flex; align-items:center; gap:8px;
+}
+.panel-label .lbl-dot{
+  width:5px; height:5px; border-radius:50%;
+  background:var(--violet); box-shadow:0 0 6px var(--violet);
+}
+
+/* Code display */
+#codeDisplay{
+  background:#eef2f7;
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:12px 14px;
+  font-family:var(--mono); font-size:11.5px; line-height:1.75;
+  color:#1f2937; min-height:20px; max-height:170px;
+  overflow-y:auto; text-align:left;
+  display:none;
+}
+#codeDisplay.visible{ display:block; }
+.code-line{ padding:1px 6px; border-radius:4px; }
+.active-line{
+  background:rgba(167,139,250,.14);
+  border-left:2px solid var(--violet);
+  color:var(--violet); font-weight:700; padding-left:10px;
+}
+
+/* Code editor */
+#codeEditor{
+  width:100%; padding:14px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  font-family:var(--mono); font-size:11.5px; line-height:1.75;
+  background:#f9fafc; color:#1f2937;
+  resize:vertical; min-height:170px;
+  outline:none; transition:border-color .2s, box-shadow .2s;
+}
+#codeEditor:focus{
+  border-color:var(--violet);
+  box-shadow:0 0 0 3px var(--violet-g);
+}
+
+/* Control buttons */
+.controls-grid{
+  display:grid; grid-template-columns:1fr 1fr;
+  gap:7px; margin-bottom:12px;
+}
+.ctrl-btn{
+  border:1px solid var(--border); border-radius:8px;
+  background:var(--card); color:var(--muted2);
+  font-family:var(--mono); font-size:10px; font-weight:800;
+  padding:10px 8px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  transition:all .18s; letter-spacing:.5px; text-transform:uppercase;
+}
+.ctrl-btn:hover{ transform:translateY(-1px); }
+
+.ctrl-btn.run{
+  grid-column:1/-1;
+  background:linear-gradient(135deg,rgba(124,58,237,.25),rgba(129,140,248,.15));
+  border-color:var(--violet-b);
+  color:var(--violet);
+  font-size:12px; padding:12px;
+  box-shadow:0 2px 16px rgba(124,58,237,.15);
+}
+.ctrl-btn.run:hover{
+  background:linear-gradient(135deg,var(--violet-b),var(--indigo));
+  color:#fff; border-color:transparent;
+  box-shadow:0 4px 24px rgba(124,58,237,.45);
+  transform:translateY(-2px);
+}
+.ctrl-btn.next:hover  { border-color:var(--col-heap);   color:var(--col-heap);   background:var(--indigo-g); }
+.ctrl-btn.auto:hover  { border-color:var(--violet);     color:var(--violet);     background:var(--violet-g); }
+.ctrl-btn.pause:hover { border-color:var(--col-static); color:var(--col-static); background:rgba(251,191,36,.1); }
+.ctrl-btn.reset:hover { border-color:var(--col-pop);    color:var(--col-pop);    background:var(--pink-g); }
+
+/* Speed row */
+.speed-row{
+  display:flex; align-items:center; gap:10px;
+  font-size:10px; color:var(--muted2); margin-bottom:12px;
+  letter-spacing:.5px;
+}
+#speedControl{
+  flex:1; accent-color:var(--violet); cursor:pointer;
+}
+.speed-val{ color:var(--violet); font-weight:800; min-width:36px; text-align:right; }
+
+/* Step counter */
+.step-display{
+  background:var(--card2);
+  border:1px solid var(--border);
+  border-radius:10px; padding:12px 16px;
+  display:flex; align-items:center; justify-content:space-between;
+  position:relative; overflow:hidden;
+}
+.step-display::before{
+  content:'';
+  position:absolute; inset:0;
+  background:linear-gradient(135deg,rgba(124,58,237,.06),transparent);
+  pointer-events:none;
+}
+.step-label{
+  font-size:9px; color:var(--muted2);
+  letter-spacing:2px; text-transform:uppercase;
+}
+#stepCounter{
+  font-family:var(--sans); font-size:28px; font-weight:800;
+  background:linear-gradient(135deg,var(--violet),var(--indigo));
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+}
+
+/* Error display */
+.error-display{ min-height:16px; padding:6px 0; }
+#compileError{ color:var(--col-pop);    font-size:11px; font-weight:700; }
+#runtimeError{ color:var(--col-static); font-size:11px; font-weight:700; }
+
+/* JVM call label */
+.jvm-call-label{
+  display:inline-flex; align-items:center; gap:6px;
+  background:var(--violet-g); color:var(--violet);
+  border:1px solid rgba(167,139,250,.3); border-radius:20px;
+  padding:5px 14px; font-size:10px; font-weight:800;
+  letter-spacing:.5px; margin:6px 0; text-transform:uppercase;
+  animation:fadeLabel 2s ease forwards;
+}
+@keyframes fadeLabel{
+  0%  { opacity:0; transform:translateY(-6px); }
+  15% { opacity:1; transform:translateY(0); }
+  75% { opacity:1; }
+  100%{ opacity:0; }
+}
+
+/* ── RIGHT PANEL ─────────────────────────────────────────── */
+.right-panel{
+  grid-column:2; grid-row:1;
+  padding-left:18px;
+  display:flex; flex-direction:column; gap:14px;
+  padding-top:16px;
+}
+
+/* Arena label */
+.arena-label{
+  font-size:9px; font-weight:800; letter-spacing:3px;
+  color:var(--muted2); text-transform:uppercase;
+  display:flex; align-items:center; gap:10px;
+}
+.arena-label::after{ content:''; flex:1; height:1px; background:var(--border); }
+.arena-label::before{
+  content:'';
+  width:5px; height:5px; border-radius:50%;
+  background:var(--violet); box-shadow:0 0 8px var(--violet);
+}
+
+/* Memory wrapper + SVG overlay */
+.memory-wrapper{ position:relative; }
+
+/* Memory grid */
+.memory{
+  display:grid;
+  grid-template-columns:210px 1fr 190px;
+  height:390px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  overflow:hidden;
+  background:var(--card);
+  box-shadow:0 0 60px rgba(124,58,237,.08), inset 0 1px 0 rgba(167,139,250,.06);
+}
+#arrowLayer{
+  position:absolute; top:0; left:0;
+  width:100%; height:390px;
+  pointer-events:none;
+}
+
+/* Panel shared header */
+.mem-header{
+  display:flex; align-items:center; gap:8px;
+  padding:13px 12px 10px;
+  border-bottom:1px solid var(--border2);
+  flex-shrink:0;
+}
+.mem-dot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.mem-title{
+  font-size:9px; font-weight:800; letter-spacing:2.5px;
+  text-transform:uppercase;
+}
+
+/* ── Stack panel ──────────────────────────────────────────── */
+.stack{
+  border-right:1px solid var(--border);
+  display:flex; flex-direction:column;
+  background:linear-gradient(160deg,rgba(52,211,153,.03) 0%,transparent 50%);
+}
+.stack .mem-dot  { background:var(--col-stack); box-shadow:0 0 7px var(--col-stack); }
+.stack .mem-title{ color:var(--col-stack); }
+
+#stackArea{
+  flex:1; overflow-y:auto;
+  padding:10px; display:flex; flex-direction:column; gap:5px;
+}
+.stack-frame{
+  background:linear-gradient(135deg,rgba(52,211,153,.11),rgba(52,211,153,.05));
+  border:1px solid rgba(52,211,153,.25);
+  border-left:2px solid var(--col-stack);
+  color:var(--col-stack);
+  padding:8px 12px; border-radius:7px;
+  font-size:11px; font-weight:700; letter-spacing:.3px;
+  animation:framePush .3s cubic-bezier(.175,.885,.32,1.275);
+  box-shadow:0 0 12px rgba(52,211,153,.06);
+}
+@keyframes framePush{
+  from{ transform:translateY(-16px) scale(.96); opacity:0; }
+  to  { transform:translateY(0)     scale(1);   opacity:1; }
+}
+.pop-animation{ animation:framePop .3s ease forwards; }
+@keyframes framePop{
+  from{ transform:translateY(0); opacity:1; }
+  to  { transform:translateY(-16px); opacity:0; }
+}
+
+/* ── Heap panel ───────────────────────────────────────────── */
+.heap{
+  position:relative;
+  display:flex; flex-direction:column;
+  border-right:1px solid var(--border);
+  background:linear-gradient(160deg,rgba(96,165,250,.02) 0%,transparent 50%);
+}
+.heap .mem-dot  { background:var(--col-heap); box-shadow:0 0 7px var(--col-heap); }
+.heap .mem-title{ color:var(--col-heap); }
+
+#heapArea{ position:absolute; inset:46px 8px 8px 8px; }
+
+.heap-object{
+  width:76px; height:76px;
+  background:linear-gradient(135deg,rgba(96,165,250,.16),rgba(96,165,250,.06));
+  border:1px solid rgba(96,165,250,.3);
+  color:var(--col-heap);
+  display:flex; align-items:center; justify-content:center;
+  border-radius:50%; position:absolute;
+  font-size:10px; font-weight:800; text-align:center; line-height:1.3;
+  box-shadow:0 0 16px rgba(96,165,250,.08);
+  animation:heapPop .4s cubic-bezier(.175,.885,.32,1.275);
+}
+@keyframes heapPop{
+  from{ transform:scale(0.15); opacity:0; }
+  to  { transform:scale(1);    opacity:1; }
+}
+
+/* Class loader sub-box */
+.classLoader{
+  position:absolute; top:46px; right:6px;
+  width:160px; max-height:136px; overflow-y:auto;
+  background:rgba(251,191,36,.04);
+  border:1px solid rgba(251,191,36,.18);
+  border-radius:9px; padding:9px;
+}
+.classLoader h3{
+  font-size:8px; font-weight:800; letter-spacing:2px;
+  color:var(--col-static); text-transform:uppercase; margin-bottom:7px;
+  display:flex; align-items:center; gap:5px;
+}
+.classLoader h3::before{
+  content:''; width:5px; height:5px; border-radius:50%;
+  background:var(--col-static); box-shadow:0 0 5px var(--col-static); flex-shrink:0;
+}
+
+/* Static pool sub-box */
+.staticPool{
+  position:absolute; bottom:6px; right:6px;
+  width:160px; max-height:118px; overflow-y:auto;
+  background:rgba(167,139,250,.04);
+  border:1px solid rgba(167,139,250,.2);
+  border-radius:9px; padding:9px;
+}
+.staticPool h3{
+  font-size:8px; font-weight:800; letter-spacing:2px;
+  color:var(--violet); text-transform:uppercase; margin-bottom:7px;
+  display:flex; align-items:center; gap:5px;
+}
+.staticPool h3::before{
+  content:''; width:5px; height:5px; border-radius:50%;
+  background:var(--violet); box-shadow:0 0 5px var(--violet); flex-shrink:0;
+}
+
+/* Static items */
+.staticItem{
+  background:rgba(251,191,36,.1);
+  border:1px solid rgba(251,191,36,.2);
+  color:var(--col-static);
+  padding:5px 8px; margin:3px 0;
+  border-radius:6px; font-size:10px; font-weight:700;
+  text-align:left; letter-spacing:.2px;
+}
+.static-main-item{
+  background:rgba(167,139,250,.1);
+  border:1px solid rgba(167,139,250,.25);
+  color:var(--violet);
+  display:flex; align-items:center; gap:6px;
+}
+.static-badge{
+  background:rgba(167,139,250,.18);
+  color:var(--violet); border:1px solid rgba(167,139,250,.3);
+  font-size:7px; font-weight:800; padding:2px 5px;
+  border-radius:4px; letter-spacing:.5px; text-transform:uppercase; flex-shrink:0;
+}
+
+/* ── Popped Frames panel ──────────────────────────────────── */
+.popped-panel{
+  display:flex; flex-direction:column;
+  background:linear-gradient(160deg,rgba(251,113,133,.03) 0%,transparent 50%);
+}
+.popped-panel .mem-dot  { background:var(--col-pop); box-shadow:0 0 7px var(--col-pop); }
+.popped-panel .mem-title{ color:var(--col-pop); }
+
+#poppedArea{
+  flex:1; overflow-y:auto; padding:8px;
+  display:flex; flex-direction:column; gap:5px;
+}
+.popped-entry{
+  display:flex; align-items:center; gap:7px;
+  background:rgba(251,113,133,.07);
+  border:1px solid rgba(251,113,133,.18);
+  border-left:2px solid var(--col-pop);
+  border-radius:7px; padding:7px 9px;
+  font-size:10px; font-weight:700;
+  color:var(--col-pop);
+  animation:popEntry .3s ease; text-align:left;
+}
+@keyframes popEntry{
+  from{ opacity:0; transform:translateX(12px); }
+  to  { opacity:1; transform:translateX(0); }
+}
+.popped-entry .dot{
+  width:5px; height:5px; border-radius:50%;
+  background:var(--col-pop); box-shadow:0 0 5px var(--col-pop); flex-shrink:0;
+}
+.popped-label{
+  font-size:8px; color:var(--muted2); font-weight:400;
+  letter-spacing:1px; text-transform:uppercase; display:block; margin-bottom:1px;
+}
+.popped-empty{
+  font-size:10px; color:var(--muted); margin-top:20px;
+  text-align:center; font-style:italic; line-height:1.8;
+}
+
+/* ── Console ──────────────────────────────────────────────── */
+.console-wrap{
+  border:1px solid var(--border); border-radius:12px;
+  overflow:hidden;
+  background:var(--card);
+  box-shadow:0 0 30px rgba(124,58,237,.05);
+}
+.console-bar{
+  background:var(--card2);
+  border-bottom:1px solid var(--border2);
+  padding:8px 14px;
+  display:flex; align-items:center; gap:7px;
+}
+.c-dot{ width:9px; height:9px; border-radius:50%; }
+.c-dot.r{ background:#ff5f57; } .c-dot.y{ background:#ffbd2e; } .c-dot.g{ background:#28c840; }
+.console-title{
+  font-size:10px; font-weight:800; color:var(--muted2);
+  letter-spacing:1.5px; text-transform:uppercase; margin-left:4px;
+}
+/* violet accent line on console title */
+.console-title span{ color:var(--violet); }
+
+#consoleArea{
+  background:#111827; color:#22c55e;
+  padding:12px 16px; font-family:var(--mono); font-size:11.5px; line-height:1.7;
+  min-height:56px; max-height:110px; overflow-y:auto; text-align:left;
+}
+#consoleArea div{ margin:1px 0; }
+#consoleArea div::before{ content:'> '; color:var(--muted); }
+
+/* ── Scrollbar ────────────────────────────────────────────── */
+::-webkit-scrollbar{ width:3px; height:3px; }
+::-webkit-scrollbar-track{ background:transparent; }
+::-webkit-scrollbar-thumb{ background:var(--border); border-radius:2px; }
+::-webkit-scrollbar-thumb:hover{ background:var(--violet); }
+
+/* Add to index.html style section */
+@keyframes methodMove {
+    0% {
+        transform: translateX(0) scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: translateX(30px) scale(0.95);
+        opacity: 0.7;
+    }
+    100% {
+        transform: translateX(0) scale(1);
+        opacity: 1;
+    }
+}
+
+.jvm-call-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--violet-g);
+    color: var(--violet);
+    border: 1px solid rgba(167,139,250,.3);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .5px;
+    margin: 6px 0;
+    text-transform: uppercase;
+    animation: fadeLabel 2s ease forwards;
+}
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ──────────────────────────────────────────── -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon">&#9670;</div>
+    <div class="logo-text">MemoryTrack</div>
+    <div class="logo-version">v1.0</div>
+  </div>
+  <nav class="nav-links">
+    <button class="nav-btn stack-btn" onclick="goToPage('stack.html')">
+      <span class="nav-indicator"></span>Stack
+    </button>
+    <button class="nav-btn heap-btn" onclick="goToPage('heap.html')">
+      <span class="nav-indicator"></span>Heap
+    </button>
+    <button class="nav-btn cl-btn" onclick="goToPage('classloader.html')">
+      <span class="nav-indicator"></span>Class Loader
+    </button>
+  </nav>
+</header>
+
+<!-- ── HERO ────────────────────────────────────────────── -->
+<div class="hero">
+  <div class="hero-badge">MemoryTrack:JVM Memory Visualizer</div>
+  <h1>Watch the JVM Think</h1>
+  <p>Write Java · Press Run · See every stack frame, heap object &amp; GC event happen live</p>
+</div>
+
+<!-- ── WORKSPACE ───────────────────────────────────────── -->
+<div class="workspace">
+
+  <!-- LEFT PANEL -->
+  <div class="left-panel">
+
+    <!-- Execution view -->
+    <div class="panel-block">
+      <div class="panel-label">
+        <span class="lbl-dot"></span>Execution View
+      </div>
+      <pre id="codeDisplay"></pre>
+    </div>
+
+    <!-- Editor -->
+    <div class="panel-block">
+      <div class="panel-label">
+        <span class="lbl-dot"></span>Code Editor
+      </div>
+      <textarea id="codeEditor" rows="10" spellcheck="false">public class Test{
+void m1()
+{
+  System.out.println("Inside m1 Method");
+}
+public static void main(String[] args){
+Test t=new Test();
+t.m1();
+}
+
+}</textarea>
+    </div>
+
+    <!-- Controls -->
+    <div class="panel-block">
+      <div class="panel-label">
+        <span class="lbl-dot"></span>Controls
+      </div>
+      <div class="controls-grid">
+        <button class="ctrl-btn run"   onclick="prepareExecution()">&#9654; Run</button>
+        <button class="ctrl-btn next"  onclick="nextStep()">&#9197; Next</button>
+        <button class="ctrl-btn auto"  onclick="autoRun()">&#9654;&#9654; Auto</button>
+        <button class="ctrl-btn pause" onclick="pauseRun()">&#9646;&#9646; Pause</button>
+        <button class="ctrl-btn reset" onclick="resetAll()">&#8635; Reset</button>
+      </div>
+      <div class="speed-row">
+        <span>Speed</span>
+        <input type="range" id="speedControl" min="200" max="2000" value="800"
+               oninput="document.querySelector('.speed-val').textContent=(2200-this.value)+'ms'">
+        <span class="speed-val">1400ms</span>
+      </div>
+    </div>
+
+    <!-- Step + errors -->
+    <div class="panel-block">
+      <div class="step-display">
+        <div class="step-label">Current Step</div>
+        <div id="stepCounter">0</div>
+      </div>
+      <div class="error-display">
+        <div id="compileError"></div>
+        <div id="runtimeError"></div>
+      </div>
+    </div>
+
+  </div>
+  <!-- end left -->
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+
+    <div class="arena-label">JVM Memory Arena</div>
+
+    <!-- Memory visualizer -->
+    <div class="memory-wrapper">
+      <div class="memory">
+
+        <!-- STACK -->
+        <div class="stack">
+          <div class="mem-header">
+            <div class="mem-dot"></div>
+            <div class="mem-title">Stack Memory</div>
+          </div>
+          <div id="stackArea"></div>
+        </div>
+
+        <!-- HEAP -->
+        <div class="heap">
+          <div class="mem-header">
+            <div class="mem-dot"></div>
+            <div class="mem-title">Heap Memory</div>
+          </div>
+          <div id="heapArea"></div>
+          <div class="classLoader">
+            <h3>Class Loader</h3>
+            <div id="classLoaderArea"></div>
+          </div>
+          <div class="staticPool">
+            <h3>Static Pool</h3>
+            <div id="staticPoolArea"></div>
+          </div>
+        </div>
+
+        <!-- POPPED FRAMES -->
+        <div class="popped-panel">
+          <div class="mem-header">
+            <div class="mem-dot"></div>
+            <div class="mem-title">Popped Frames</div>
+          </div>
+          <div id="poppedArea">
+            <div class="popped-empty">No frames<br>popped yet</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- SVG arrows -->
+      <svg id="arrowLayer" style="position:absolute;top:0;left:0;width:100%;height:390px;pointer-events:none;">
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#818cf8"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+
+    <!-- Console -->
+    <div class="console-wrap">
+      <div class="console-bar">
+        <div class="c-dot r"></div>
+        <div class="c-dot y"></div>
+        <div class="c-dot g"></div>
+        <span class="console-title">Console <span>Output</span></span>
+      </div>
+      <div id="consoleArea"></div>
+    </div>
+
+  </div>
+  <!-- end right -->
+
+</div>
+
+<script src="simulator.js"></script>
+</body>
+</html>
